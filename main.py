@@ -20,11 +20,11 @@ from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 
 # =====================================================================
-# 1. КОНФІГУРАЦІЯ ТА КЛЮЧІ (через Змінні Оточення Render або напряму)
+# 1. КОНФІГУРАЦІЯ ТА КЛЮЧІ
 # =====================================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "ВСТАВТЕ_ВАШ_TELEGRAM_BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "ВСТАВТЕ_ВАШ_GEMINI_API_KEY")
-MONO_TOKEN = os.getenv("MONO_TOKEN", "ВСТАВТЕ_ВАШ_MONOBANK_API_KEY")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
+MONO_TOKEN = os.getenv("MONO_TOKEN", "YOUR_MONOBANK_API_KEY")
 
 PRICE_FULL_ANALYSIS_UAH = 50
 
@@ -50,7 +50,7 @@ SYSTEM_PROMPT_UA = """
 2. 🧠 **Психологічний портрет (Молеософія)**:
    - Опиши риси характеру та приховані таланти залежно від розташування точок (наприклад: на щоці — артистизм та шарм; на лобі — мудрість та інтуїція; біля губ — харизма).
 3. 🌟 **Зірковий двійник**:
-   - Наведи приклад відомої особистості з схожим розташування родимок (Мерілін Монро, Скарлетт Йоганссон, Анжеліна Джолі, Бред Пітт тощо).
+   - Наведи приклад відомої особистості з схожим розташуванням родимок (Мерілін Монро, Скарлетт Йоганссон, Анжеліна Джолі, Бред Пітт тощо).
 4. 📜 **Порада дня**: коротке натхненне напутнє слово.
 
 Наприкінці відповіді обов'язково окремим рядком напиши:
@@ -184,8 +184,9 @@ async def photo_handler(message: Message):
 
     image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
     
+    # Використовуємо актуальну модель gemini-3.6-flash
     response = ai_client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.6-flash",
         contents=[image_part, "Проаналізуй фото відповідно до системної інструкції."],
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT_UA,
@@ -215,7 +216,7 @@ async def photo_handler(message: Message):
 
     await wait_msg.delete()
     await message.answer_photo(
-        photo=photo_file,
+        photo=photo=photo_file,
         caption=f"🌌 **Результат SkinStarlight**\n\n{caption_text}",
         parse_mode="Markdown",
         reply_markup=kb
