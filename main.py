@@ -1,9 +1,11 @@
 import asyncio
 import io
+import os
 import sqlite3
 from typing import Dict, Any
 
 import aiohttp
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import (
@@ -18,20 +20,20 @@ from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 
 # =====================================================================
-# 1. КОНФІГУРАЦІЯ ТА КЛЮЧІ
+# 1. КОНФІГУРАЦІЯ ТА КЛЮЧІ (через Змінні Оточення Render або напряму)
 # =====================================================================
-BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
-MONO_TOKEN = "YOUR_MONOBANK_API_KEY"  # Токен з https://api.monobank.ua/
+BOT_TOKEN = os.getenv("BOT_TOKEN", "ВСТАВТЕ_ВАШ_TELEGRAM_BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "ВСТАВТЕ_ВАШ_GEMINI_API_KEY")
+MONO_TOKEN = os.getenv("MONO_TOKEN", "ВСТАВТЕ_ВАШ_MONOBANK_API_KEY")
 
-PRICE_FULL_ANALYSIS_UAH = 50  # Вартість розширеного аналізу в грн
+PRICE_FULL_ANALYSIS_UAH = 50
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # =====================================================================
-# 2. СИСТЕМНИЙ ПРОМПТ ДЛЯ GEMINI (УКРАЇНСЬКА ВЕРСІЯ)
+# 2. СИСТЕМНИЙ ПРОМПТ GEMINI
 # =====================================================================
 SYSTEM_PROMPT_UA = """
 Ти — професійний, захоплюючий та доброзичливий бот-астролог і фізіогноміст "SkinStarlight".
@@ -48,11 +50,11 @@ SYSTEM_PROMPT_UA = """
 2. 🧠 **Психологічний портрет (Молеософія)**:
    - Опиши риси характеру та приховані таланти залежно від розташування точок (наприклад: на щоці — артистизм та шарм; на лобі — мудрість та інтуїція; біля губ — харизма).
 3. 🌟 **Зірковий двійник**:
-   - Наведи приклад відомої особистості або харизматичного діяча з схожим розташуванням родимок (Мерілін Монро, Скарлетт Йоганссон, Анжеліна Джолі, Бред Пітт тощо).
+   - Наведи приклад відомої особистості з схожим розташування родимок (Мерілін Монро, Скарлетт Йоганссон, Анжеліна Джолі, Бред Пітт тощо).
 4. 📜 **Порада дня**: коротке натхненне напутнє слово.
 
 Наприкінці відповіді обов'язково окремим рядком напиши:
-ТИТУЛ: [Короткий та яскравий титул до 4 слів, наприклад: Володар Зоряної Касіопеї]
+ТИТУЛ: [Короткий та яскравий титул до 4 слів]
 """
 
 # =====================================================================
@@ -91,8 +93,8 @@ async def create_mono_invoice(user_id: int, amount_uah: int) -> Dict[str, Any]:
     url = "https://api.monobank.ua/api/merchant/invoice/create"
     headers = {"X-Token": MONO_TOKEN}
     payload = {
-        "amount": amount_uah * 100,  # Сума в копійках
-        "ccy": 980,  # UAH
+        "amount": amount_uah * 100,
+        "ccy": 980,
         "merchantPaymInfo": {
             "destination": "Розширений Астрологічний Звіт SkinStarlight",
             "comment": f"Оплата для користувача {user_id}"
@@ -105,10 +107,7 @@ async def create_mono_invoice(user_id: int, amount_uah: int) -> Dict[str, Any]:
             if resp.status == 200:
                 conn = sqlite3.connect("skinstarlight.db")
                 cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO invoices (invoice_id, user_id) VALUES (?, ?)", 
-                    (data["invoiceId"], user_id)
-                )
+                cursor.execute("INSERT INTO invoices (invoice_id, user_id) VALUES (?, ?)", (data["invoiceId"], user_id))
                 conn.commit()
                 conn.close()
             return data
@@ -134,7 +133,6 @@ def create_starlight_card(image_bytes: bytes, title_text: str) -> bytes:
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
     
-    # Напівпрозора неонова плашка знизу
     overlay_draw.rectangle(
         [(0, height - banner_height), (width, height)],
         fill=(15, 12, 41, 210)
@@ -179,7 +177,6 @@ async def photo_handler(message: Message):
     
     wait_msg = await message.answer("🔮 *Сканую космічні точки та будую карту сузір'їв...*", parse_mode="Markdown")
 
-    # Завантаження фото
     photo = message.photo[-1]
     file_info = await bot.get_file(photo.file_id)
     downloaded_file = await bot.download_file(file_info.file_path)
@@ -187,7 +184,6 @@ async def photo_handler(message: Message):
 
     image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
     
-    # Запит до Gemini
     response = ai_client.models.generate_content(
         model="gemini-2.5-flash",
         contents=[image_part, "Проаналізуй фото відповідно до системної інструкції."],
@@ -199,7 +195,6 @@ async def photo_handler(message: Message):
 
     full_text = response.text
     
-    # Витягуємо титул для картки
     title_text = "Зоряна Проекція"
     if "ТИТУЛ:" in full_text:
         parts = full_text.split("ТИТУЛ:")
@@ -208,11 +203,9 @@ async def photo_handler(message: Message):
     else:
         caption_text = full_text
 
-    # Створюємо брендоване фото
     processed_bytes = create_starlight_card(image_bytes, title_text)
     photo_file = BufferedInputFile(processed_bytes, filename="starlight_result.jpg")
 
-    # Кнопка для замовлення VIP-звіту через Monobank
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text=f"💳 Отримати персональний VIP-розбір ({PRICE_FULL_ANALYSIS_UAH} грн)", 
@@ -261,11 +254,24 @@ async def check_payment_callback(callback: CallbackQuery):
         await callback.answer("Оплата ще не пройшла. Спробуйте через декілька секунд.", show_alert=True)
 
 # =====================================================================
-# 7. ЗАПУСК
+# 7. МІКРО ВЕБ-СЕРВЕР ДЛЯ РЕНДЕРУ (УСУВАЄ ПОМИЛКУ NO OPEN PORTS)
 # =====================================================================
+async def handle_ping(request):
+    return web.Response(text="Bot is running alive!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
 async def main():
     init_db()
-    print("🚀 Бот SkinStarlight успішно запущено!")
+    await start_web_server()
+    print("🚀 Бот SkinStarlight успішно запустився!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
