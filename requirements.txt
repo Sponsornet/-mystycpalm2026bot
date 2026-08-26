@@ -1,2 +1,5 @@
-python-telegram-bot
-google-generativeai
+python-telegram-bot>=20.0
+google-genai
+Pillow
+edge-tts
+aiohttp
